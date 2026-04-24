@@ -1,0 +1,13 @@
+{
+  "name": "SafeTrace",
+  "description": "A covert personal safety dashboard disguised as a professional utility.",
+  "requestFramePermissions": [
+    "geolocation",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "Real-time Tracking",
+    "Discreet Alerts",
+    "Emergency Response Management"
+  ]
+}
