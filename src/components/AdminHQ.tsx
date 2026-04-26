@@ -17,7 +17,8 @@ import {
   Navigation,
   Layers
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { useState, useEffect } from 'react';
+import { cn } from '../lib/utils';
 import {
   ResponsiveContainer,
   BarChart as ReBarChart,
@@ -26,13 +27,60 @@ import {
   YAxis,
   Tooltip
 } from 'recharts';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Custom SOS Marker Icon
+const createCustomIcon = () => {
+  return L.divIcon({
+    className: 'custom-sos-marker bg-transparent border-none',
+    html: `
+      <div class="relative w-8 h-8">
+        <div class="absolute inset-0 bg-error rounded-full animate-ping opacity-75"></div>
+        <div class="relative flex items-center justify-center w-8 h-8 bg-error rounded-full border-2 border-white shadow-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        </div>
+      </div>
+    `,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+  });
+};
 
 export default function AdminHQ() {
-  const incidents = [
-    { type: 'medical', title: 'Medical Emergency - Station Road', desc: 'Triggered 12m ago • Responder R-04 assigned', status: 'In Progress', color: 'bg-secondary-container text-on-secondary-container' },
-    { type: 'panic', title: 'Panic Alert - Central Park', desc: 'Triggered 24m ago • Rapid deployment active', status: 'High Risk', color: 'bg-error-container text-error' },
-    { type: 'false', title: 'False Alarm - 5th Ave Mall', desc: 'Resolved 1h ago • User error confirmed', status: 'Resolved', color: 'bg-surface-container text-on-surface-variant' }
-  ];
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState('Dashboard');
+
+  const fetchAlerts = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const res = await fetch('http://localhost:5000/api/admin/alerts', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAlerts(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch alerts', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 5000); // Poll every 5s
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTimeAgo = (dateString: string) => {
+    const diff = Math.floor((new Date().getTime() - new Date(dateString).getTime()) / 60000);
+    if (diff < 1) return 'Just now';
+    if (diff < 60) return `${diff}m ago`;
+    return `${Math.floor(diff / 60)}h ago`;
+  };
 
   return (
     <div className="flex h-screen w-full bg-surface">
@@ -41,23 +89,23 @@ export default function AdminHQ() {
         <div className="font-manrope font-black text-2xl text-[#1E0A1A] mb-8">SafeTrace</div>
         <nav className="flex-1 space-y-2">
           {[
-            { label: 'Dashboard', icon: <Layout size={20} />, active: true },
+            { label: 'Dashboard', icon: <Layout size={20} /> },
             { label: 'Live Map', icon: <MapIcon size={20} /> },
             { label: 'Incident Logs', icon: <ListAlt size={20} /> },
             { label: 'Responder Stats', icon: <BarChart size={20} /> },
             { label: 'Admin Settings', icon: <AdminPanelSettings size={20} /> },
           ].map((item, idx) => (
-            <a
+            <div
               key={idx}
-              href="#"
+              onClick={() => setActiveTab(item.label)}
               className={cn(
-                "flex items-center gap-3 px-4 py-3 rounded-[12px] transition-transform hover:translate-x-1",
-                item.active ? "bg-slate-200 text-[#1E0A1A] font-bold" : "text-slate-500 hover:bg-slate-100"
+                "flex items-center gap-3 px-4 py-3 rounded-[12px] transition-transform hover:translate-x-1 cursor-pointer",
+                activeTab === item.label ? "bg-slate-200 text-[#1E0A1A] font-bold" : "text-slate-500 hover:bg-slate-100"
               )}
             >
               {item.icon}
               <span className="text-sm font-medium">{item.label}</span>
-            </a>
+            </div>
           ))}
         </nav>
         <div className="mt-auto pt-6 border-t border-slate-200 flex items-center gap-3 p-2">
@@ -106,12 +154,34 @@ export default function AdminHQ() {
               <button className="w-10 h-10 glass-card rounded-full flex items-center justify-center hover:bg-white"><Layers size={18} /></button>
               <button className="w-10 h-10 glass-card rounded-full flex items-center justify-center hover:bg-white"><Search size={18} /></button>
             </div>
-            <img
-              className="w-full h-full object-cover grayscale opacity-80"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-SOStZH9b_seoRub1pdicrGFYS8ZSoDnSdR7Qy0QFwWnOgUl8AEddSTmPQz5R0vTfuxQZXumfQI9oV44qCGvaD3fLHEIF1vW-xzq_vpi2r4M_96rL6VjvG9m6zqt6sd0hbgZHDw1XwXGafitfzTYgmQOKPoIEwrVbMwWbD8RB0r2EEN4HvOUKTA1lBi1QIWCOXGJV2o63y-r8Bf-c418lrCNavWjVCmTJYwebpn7JBUq4DaaEOF4YMUJyKXG1csRsS_k_RQRr25kX"
-              alt="Live Map"
-              referrerPolicy="no-referrer"
-            />
+            <div className="absolute inset-0 z-0">
+              <MapContainer 
+                center={alerts.length > 0 ? [alerts[0].location.latitude, alerts[0].location.longitude] : [40.7128, -74.0060]} 
+                zoom={13} 
+                style={{ height: '100%', width: '100%' }}
+                zoomControl={false}
+              >
+                <TileLayer
+                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                />
+                {alerts.map(alert => (
+                  <Marker 
+                    key={alert._id} 
+                    position={[alert.location.latitude, alert.location.longitude]}
+                    icon={createCustomIcon()}
+                  >
+                    <Popup className="font-manrope">
+                      <div className="flex flex-col gap-1">
+                        <p className="font-bold text-sm text-error uppercase m-0 leading-none">SOS ALERT</p>
+                        <p className="font-semibold text-[#1E0A1A] m-0">{alert.user?.name || 'Unknown User'}</p>
+                        <p className="text-[10px] text-slate-500 m-0">Battery: {alert.batteryLevel}%</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
+            </div>
             <div className="absolute bottom-6 left-6 right-6">
               <div className="glass-card p-4 rounded-[20px] flex justify-between items-center">
                 <div className="flex gap-8">
@@ -143,7 +213,7 @@ export default function AdminHQ() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-[12px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Active Alerts</p>
-                  <h3 className="text-4xl font-black text-error leading-none">03</h3>
+                  <h3 className="text-4xl font-black text-error leading-none">{alerts.length < 10 ? `0${alerts.length}` : alerts.length}</h3>
                 </div>
                 <div className="w-12 h-12 bg-error-container rounded-xl flex items-center justify-center">
                   <Bell className="text-error" size={24} />
@@ -170,18 +240,25 @@ export default function AdminHQ() {
               <button className="text-primary text-sm font-bold hover:underline">View All</button>
             </div>
             <div className="divide-y divide-surface-variant">
-              {incidents.map((incident, idx) => (
-                <div key={idx} className="px-6 py-4 flex items-center hover:bg-slate-50 transition-colors">
-                  <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mr-4">
-                    {incident.type === 'medical' ? <MedicalServices size={20} className="text-secondary" /> : <Shield size={20} className="text-error" />}
+              {alerts.length === 0 && (
+                <div className="px-6 py-8 text-center text-slate-500 font-medium">
+                  No active alerts at the moment.
+                </div>
+              )}
+              {alerts.map((alert) => (
+                <div key={alert._id} className="px-6 py-4 flex items-center hover:bg-slate-50 transition-colors">
+                  <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center mr-4">
+                    <Shield size={20} className="text-error" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-sm text-[#1E0A1A]">{incident.title}</p>
-                    <p className="text-xs text-slate-500">{incident.desc}</p>
+                    <p className="font-bold text-sm text-[#1E0A1A]">SOS Alert - {alert.user?.name || 'Unknown User'}</p>
+                    <p className="text-xs text-slate-500">
+                      Triggered {formatTimeAgo(alert.createdAt)} • Lat: {alert.location.latitude.toFixed(4)}, Lng: {alert.location.longitude.toFixed(4)}
+                    </p>
                   </div>
                   <div className="flex gap-3 items-center">
-                    <span className={cn("px-3 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider", incident.color)}>
-                      {incident.status}
+                    <span className="px-3 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider bg-error-container text-error">
+                      High Risk
                     </span>
                     <ChevronRight className="text-slate-400" size={20} />
                   </div>

@@ -5,10 +5,10 @@
 
 import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import Calculator from '../src/components/Calculator';
-import HiddenDashboard from '../src/components/HiddenDashboard';
-import SOSMonitor from '../src/components/SOSMonitor';
-import AdminHQ from '../src/components/AdminHQ';
+import Calculator from './components/Calculator';
+import HiddenDashboard from './components/HiddenDashboard';
+import SOSMonitor from './components/SOSMonitor';
+import AdminHQ from './components/AdminHQ';
 
 enum AppState {
   HARMLESS = 'harmless',
@@ -19,6 +19,52 @@ enum AppState {
 export default function App() {
   const [state, setState] = useState<AppState>(AppState.HARMLESS);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [activeAlertId, setActiveAlertId] = useState<string | null>(null);
+
+  // Auto-authenticate a test user to get a JWT token
+  useEffect(() => {
+    const authenticate = async () => {
+      const token = localStorage.getItem('token');
+      if (token) return; // Already have a token
+
+      try {
+        // Try to register a test user
+        const res = await fetch('http://localhost:5000/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Test User',
+            email: 'testuser@safetrace.com',
+            password: 'password123'
+          })
+        });
+
+        const data = await res.json();
+        
+        if (res.ok) {
+          localStorage.setItem('token', data.token);
+        } else if (data.message === 'User already exists') {
+          // If already registered, login to get the token
+          const loginRes = await fetch('http://localhost:5000/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: 'testuser@safetrace.com',
+              password: 'password123'
+            })
+          });
+          const loginData = await loginRes.json();
+          if (loginRes.ok) {
+            localStorage.setItem('token', loginData.token);
+          }
+        }
+      } catch (error) {
+        console.error('Auth error:', error);
+      }
+    };
+
+    authenticate();
+  }, []);
 
   useEffect(() => {
     const checkSize = () => {
@@ -58,7 +104,10 @@ export default function App() {
             transition={{ type: 'spring', damping: 25, stiffness: 120 }}
           >
             <HiddenDashboard
-              onStartSOS={() => setState(AppState.SOS)}
+              onStartSOS={(alertId) => {
+                setActiveAlertId(alertId);
+                setState(AppState.SOS);
+              }}
               onNavigateHome={() => setState(AppState.HARMLESS)}
             />
           </motion.div>
@@ -72,7 +121,13 @@ export default function App() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <SOSMonitor onDeactivate={() => setState(AppState.HIDDEN)} />
+            <SOSMonitor 
+              activeAlertId={activeAlertId}
+              onDeactivate={() => {
+                setActiveAlertId(null);
+                setState(AppState.HIDDEN);
+              }} 
+            />
           </motion.div>
         )}
       </AnimatePresence>

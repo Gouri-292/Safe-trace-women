@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Grid2X2,
@@ -18,14 +19,89 @@ import {
   Bell,
   Share2
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '../lib/utils';
 
 interface HiddenDashboardProps {
-  onStartSOS: () => void;
+  onStartSOS: (alertId: string) => void;
   onNavigateHome: () => void;
 }
 
 export default function HiddenDashboard({ onStartSOS, onNavigateHome }: HiddenDashboardProps) {
+  const [isTriggering, setIsTriggering] = useState(false);
+  const [activeNavTab, setActiveNavTab] = useState('Settings');
+  const [toggles, setToggles] = useState({
+    sms: true,
+    audio: false,
+    live: true,
+    call: false
+  });
+
+  const toggleItems = [
+    { id: 'sms' as const, label: 'Auto SMS', sub: 'Distress Triggers', icon: <MessageSquare size={20} /> },
+    { id: 'audio' as const, label: 'Audio Logs', sub: 'Continuous', icon: <Mic size={20} /> },
+    { id: 'live' as const, label: 'Live Tracking', sub: 'GPS Stream', icon: <MapPin size={20} /> },
+    { id: 'call' as const, label: 'Auto Call', sub: 'Emergency Hub', icon: <Phone size={20} /> },
+  ];
+
+  const handleToggle = (id: keyof typeof toggles) => {
+    setToggles(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleTriggerSOS = () => {
+    setIsTriggering(true);
+
+    if (!navigator.geolocation) {
+      console.warn("Geolocation is not supported by your browser");
+      // Proceed with fallback coordinates
+      triggerBackendSOS(40.7128, -74.0060);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        triggerBackendSOS(position.coords.latitude, position.coords.longitude);
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+        // Proceed with fallback coordinates if location access is denied
+        triggerBackendSOS(40.7128, -74.0060);
+      }
+    );
+  };
+
+  const triggerBackendSOS = async (lat: number, lng: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Optional: try to get real battery if supported
+      let batteryLevel = 50;
+      if ('getBattery' in navigator) {
+        const battery: any = await (navigator as any).getBattery();
+        batteryLevel = Math.round(battery.level * 100);
+      }
+
+      const res = await fetch('http://localhost:5000/api/sos/trigger', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          latitude: lat,
+          longitude: lng,
+          batteryLevel,
+        }),
+      });
+
+      const data = await res.json();
+      setIsTriggering(false);
+      onStartSOS(data._id); // Pass the alert ID up to transition to SOS Monitor
+    } catch (error) {
+      console.error('Error triggering SOS to backend:', error);
+      setIsTriggering(false);
+      onStartSOS('dummy_id'); // Proceed with dummy ID if backend fails
+    }
+  };
   const contacts = [
     {
       name: 'Sarah Mitchell',
@@ -94,31 +170,33 @@ export default function HiddenDashboard({ onStartSOS, onNavigateHome }: HiddenDa
           </div>
 
           {/* Toggles */}
-          {[
-            { label: 'Auto SMS', sub: 'Distress Triggers', icon: <MessageSquare size={20} />, active: true },
-            { label: 'Audio Logs', sub: 'Continuous', icon: <Mic size={20} />, active: false },
-            { label: 'Live Tracking', sub: 'GPS Stream', icon: <MapPin size={20} />, active: true },
-            { label: 'Auto Call', sub: 'Emergency Hub', icon: <Phone size={20} />, active: false },
-          ].map((item, idx) => (
-            <div key={idx} className="glass-card rounded-[20px] p-4 flex flex-col justify-between inner-highlight min-h-[140px]">
-              <div className="flex flex-col gap-1">
-                <span className={cn("text-secondary")}>{item.icon}</span>
-                <span className="font-bold text-sm">{item.label}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-outline font-semibold">{item.sub}</span>
-                <div className={cn(
-                  "w-10 h-5 rounded-full relative transition-colors",
-                  item.active ? "bg-primary-container" : "bg-surface-container-highest"
-                )}>
+          {toggleItems.map((item, idx) => {
+            const isActive = toggles[item.id];
+            return (
+              <div 
+                key={idx} 
+                onClick={() => handleToggle(item.id)}
+                className="glass-card rounded-[20px] p-4 flex flex-col justify-between inner-highlight min-h-[140px] cursor-pointer hover:bg-white/10 transition-colors"
+              >
+                <div className="flex flex-col gap-1">
+                  <span className={cn("text-secondary", isActive && "text-primary-container")}>{item.icon}</span>
+                  <span className="font-bold text-sm">{item.label}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-outline font-semibold">{item.sub}</span>
                   <div className={cn(
-                    "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
-                    item.active ? "right-1" : "left-1"
-                  )} />
+                    "w-10 h-5 rounded-full relative transition-colors duration-300",
+                    isActive ? "bg-primary-container" : "bg-surface-container-highest"
+                  )}>
+                    <div className={cn(
+                      "absolute top-1 w-3 h-3 bg-white rounded-full transition-all duration-300",
+                      isActive ? "right-1" : "left-1"
+                    )} />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Live Location Sharing */}
@@ -193,11 +271,16 @@ export default function HiddenDashboard({ onStartSOS, onNavigateHome }: HiddenDa
         <section className="pb-12">
           <motion.button
             whileTap={{ scale: 0.95 }}
-            onClick={onStartSOS}
-            className="w-full bg-[#1E0A1A] text-white py-6 rounded-[20px] font-manrope font-black text-lg tracking-wider shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all"
+            onClick={handleTriggerSOS}
+            disabled={isTriggering}
+            className="w-full bg-[#1E0A1A] text-white py-6 rounded-[20px] font-manrope font-black text-lg tracking-wider shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all disabled:opacity-70"
           >
-            <Bell className="text-primary-fixed" size={24} />
-            RUN TEST SIGNAL
+            {isTriggering ? (
+              <div className="w-6 h-6 border-4 border-primary-fixed border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Bell className="text-primary-fixed" size={24} />
+            )}
+            {isTriggering ? 'CONNECTING...' : 'RUN TEST SIGNAL'}
           </motion.button>
           <p className="text-center text-[10px] text-outline font-medium mt-4 px-8 leading-relaxed uppercase tracking-tighter">
             Perform a silent drill to ensure all selected contacts receive dummy alerts.
@@ -211,12 +294,19 @@ export default function HiddenDashboard({ onStartSOS, onNavigateHome }: HiddenDa
           { label: 'Calculate', icon: <Grid2X2 size={24} /> },
           { label: 'History', icon: <History size={24} /> },
           { label: 'SafeZones', icon: <Shield size={24} /> },
-          { label: 'Settings', icon: <Settings size={24} />, active: true },
+          { label: 'Settings', icon: <Settings size={24} /> },
         ].map((nav, idx) => (
-          <div key={idx} className={cn(
-            "flex flex-col items-center justify-center transition-colors",
-            nav.active ? "text-[#1E0A1A] bg-white/40 rounded-[16px] px-4 py-1" : "text-slate-400 hover:text-[#1E0A1A]"
-          )}>
+          <div 
+            key={idx} 
+            onClick={() => {
+              if (nav.label === 'Calculate') onNavigateHome();
+              else setActiveNavTab(nav.label);
+            }}
+            className={cn(
+              "flex flex-col items-center justify-center transition-all cursor-pointer px-4 py-1 rounded-[16px]",
+              activeNavTab === nav.label ? "text-[#1E0A1A] bg-white/40" : "text-slate-400 hover:text-[#1E0A1A] hover:bg-white/20"
+            )}
+          >
             {nav.icon}
             <span className="font-manrope text-[10px] font-semibold uppercase tracking-wider">{nav.label}</span>
           </div>

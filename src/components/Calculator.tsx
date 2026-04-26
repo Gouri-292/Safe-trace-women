@@ -12,7 +12,7 @@ import {
   Wifi,
   Battery
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '../lib/utils';
 
 interface CalculatorProps {
   onUnlock: () => void;

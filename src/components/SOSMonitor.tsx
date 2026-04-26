@@ -11,15 +11,18 @@ import {
   Settings,
   Grid2X2
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '../lib/utils';
 import { useState, useEffect } from 'react';
 
 interface SOSMonitorProps {
+  activeAlertId: string | null;
   onDeactivate: () => void;
-}
+} 
 
-export default function SOSMonitor({ onDeactivate }: SOSMonitorProps) {
+export default function SOSMonitor({ activeAlertId, onDeactivate }: SOSMonitorProps) {
   const [timer, setTimer] = useState('04:12:08');
+  const [isResolving, setIsResolving] = useState(false);
+  const [activeNavTab, setActiveNavTab] = useState('SafeZones');
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -112,13 +115,31 @@ export default function SOSMonitor({ onDeactivate }: SOSMonitorProps) {
         </div>
 
         {/* Deactivate Button */}
-        <div className="mt-12 w-full">
+        <div className="mt-8 mb-24 w-full">
           <motion.button
             whileTap={{ scale: 0.95 }}
-            onDoubleClick={onDeactivate}
-            className="w-full py-5 bg-white/5 border border-white/10 text-on-primary-container/40 font-manrope font-bold text-sm tracking-widest rounded-full uppercase transition-all active:scale-95 active:bg-white/10"
+            onDoubleClick={async () => {
+              if (isResolving) return;
+              setIsResolving(true);
+              try {
+                const token = localStorage.getItem('token');
+                if (activeAlertId && activeAlertId !== 'dummy_id') {
+                  await fetch(`http://localhost:5000/api/sos/resolve/${activeAlertId}`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` }
+                  });
+                }
+                setIsResolving(false);
+                onDeactivate();
+              } catch (error) {
+                console.error("Failed to resolve alert", error);
+                setIsResolving(false);
+                onDeactivate(); // Fallback to deactivate UI anyway
+              }
+            }}
+            className="w-full py-5 bg-white/20 border border-white/40 text-white font-manrope font-bold text-sm tracking-widest rounded-full uppercase transition-all active:scale-95 active:bg-white/30"
           >
-            Long Press to Deactivate
+            {isResolving ? 'Resolving...' : 'Double Click to Deactivate'}
           </motion.button>
         </div>
       </main>
@@ -128,13 +149,17 @@ export default function SOSMonitor({ onDeactivate }: SOSMonitorProps) {
         {[
           { label: 'Calculate', icon: <Grid2X2 size={24} /> },
           { label: 'History', icon: <History size={24} /> },
-          { label: 'SafeZones', icon: <Shield size={24} />, active: true },
+          { label: 'SafeZones', icon: <Shield size={24} /> },
           { label: 'Settings', icon: <Settings size={24} /> },
         ].map((nav, idx) => (
-          <div key={idx} className={cn(
-            "flex flex-col items-center justify-center transition-colors px-4 py-1",
-            nav.active ? "text-[#1E0A1A] bg-white/40 rounded-[16px]" : "text-slate-400"
-          )}>
+          <div 
+            key={idx} 
+            onClick={() => setActiveNavTab(nav.label)}
+            className={cn(
+              "flex flex-col items-center justify-center transition-all cursor-pointer px-4 py-1 rounded-[16px]",
+              activeNavTab === nav.label ? "text-[#1E0A1A] bg-white/40" : "text-slate-400 hover:text-[#1E0A1A] hover:bg-white/20"
+            )}
+          >
             {nav.icon}
             <span className="font-manrope text-[10px] font-semibold uppercase tracking-wider">{nav.label}</span>
           </div>
